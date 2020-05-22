@@ -432,6 +432,18 @@
                                                     "] arg1 arg2"))))
            "Usage: myprog [--alpha|--beta] arg1 arg2"))))
 
+
+(deftest test-parse-pattern-opts
+  (testing "parses options to :options"
+    (is (= (:options (parse-opts ["--alpha=a" "--alpha-beta=ab" "--alpha-gamma=ab"] 
+                                 [["-a" "--alpha VALUE"]
+                                  [:long-opt #"^--alpha-.*"
+                                   :required "<value>"
+                                   :id :pattern-alpha
+                                   :default []
+                                   :assoc-fn (fn [all k v] (update all k conj v))]]))
+           {:alpha "a", :pattern-alpha [[:alpha-beta "ab"] [:alpha-gamma "ab"]]}))))
+
 (comment
   ;; Chas Emerick's PhantomJS test runner
   (spit "target/runner.js"
