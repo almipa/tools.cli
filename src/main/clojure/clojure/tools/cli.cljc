@@ -4,6 +4,19 @@
   (:require [clojure.string :as s]
             #?(:cljs goog.string.format)))
 
+(defn- pattern?
+  [opt]
+  (instance? java.util.regex.Pattern opt))
+
+(defn- contains-opt? 
+  [required-set opt]
+  (or
+    (contains? required-set opt)
+    (->> 
+      (filter #(pattern? %) required-set)
+      (some #(re-find % opt)))))
+
+
 (defn- tokenize-args
   "Reduce arguments sequence into [opt-type opt ?optarg?] vectors and a vector
   of remaining arguments. Returns as [option-tokens remaining-args].
@@ -30,7 +43,7 @@
           #"^--\S+=" (recur (conj opts (into [:long-opt] (s/split car #"=" 2)))
                             argv cdr)
           ;; Long options, consumes cdr head if needed
-          #"^--" (let [[optarg cdr] (if (contains? required-set car)
+          #"^--" (let [[optarg cdr] (if (contains-opt? required-set car)
                                       [(first cdr) (rest cdr)]
                                       [nil cdr])]
                    (recur (conj opts (into [:long-opt car] (if optarg [optarg] [])))
@@ -245,15 +258,19 @@
 
   (select-keys map spec-keys))
 
+(defn- id-for
+  [opt]
+  (keyword (nth (re-find #"^--(\[no-\])?(.*)" opt) 2)))
+
 (defn- compile-spec [spec]
   (let [sopt-lopt-desc (take-while #(or (string? %) (nil? %)) spec)
         spec-map (apply hash-map (drop (count sopt-lopt-desc) spec))
         [short-opt long-opt desc] sopt-lopt-desc
         long-opt (or long-opt (:long-opt spec-map))
         [long-opt req] (when long-opt
-                         (rest (re-find #"^(--[^ =]+)(?:[ =](.*))?" long-opt)))
+                         (rest (re-find #"^(--[^ =]+)(?:[ =](.*))?" (str long-opt))))
         id (when long-opt
-             (keyword (nth (re-find #"^--(\[no-\])?(.*)" long-opt) 2)))
+             (id-for (str long-opt)))
         validate (:validate spec-map)
         [validate-fn validate-msg] (when (seq validate)
                                      (->> (partition 2 2 (repeat nil) validate)
@@ -357,11 +374,11 @@
    (filter
     (fn [spec]
       (when-let [spec-opt (get spec opt-type)]
-        (let [flag-tail (second (re-find #"^--\[no-\](.*)" spec-opt))
+        (let [flag-tail (second (re-find #"^--\[no-\](.*)" (str spec-opt)))
               candidates (if flag-tail
                            #{(str "--" flag-tail) (str "--no-" flag-tail)}
                            #{spec-opt})]
-          (contains? candidates opt))))
+          (contains-opt? candidates opt))))
     specs)))
 
 (defn- pr-join [& xs]
@@ -447,7 +464,9 @@
                        (if (:multi spec)
                          (update m id update-fn value)
                          (update m id update-fn))
-                       ((:assoc-fn spec assoc) m id value))
+                       ((:assoc-fn spec assoc) 
+                        m id 
+                        (if (pattern? (:long-opt spec)) [(id-for opt) value] value)))
                      (conj ids id)
                      errors])
                   [m ids (conj errors error)]))
