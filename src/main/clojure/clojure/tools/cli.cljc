@@ -417,7 +417,7 @@
 
 (defn- neg-flag? [spec opt]
   (and (:long-opt spec)
-       (re-find #"^--\[no-\]" (:long-opt spec))
+       (re-find #"^--\[no-\]" (str (:long-opt spec)))
        (re-find #"^--no-" opt)))
 
 (defn- parse-optarg [spec opt optarg]
